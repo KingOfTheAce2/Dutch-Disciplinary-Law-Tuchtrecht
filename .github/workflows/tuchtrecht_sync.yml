@@ -1,12 +1,12 @@
-name: Daily Tuchtrecht Sync
+name: Tuchtrecht Sync (Incremental)
 
 on:
   schedule:
-    - cron: '0 8 * * *'  # Runs daily at 08:00 UTC
-  workflow_dispatch:     # Allows manual trigger
+    - cron: '0 * * * *'  # Every hour
+  workflow_dispatch:    # Manual trigger
 
 jobs:
-  fetch-and-push:
+  sync:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -17,10 +17,9 @@ jobs:
           python-version: '3.10'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install huggingface_hub requests
 
       - name: Run fetch script
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          HF_REPO_ID: ${{ secrets.HF_REPO_ID }}
         run: python fetch_tuchtrecht.py
