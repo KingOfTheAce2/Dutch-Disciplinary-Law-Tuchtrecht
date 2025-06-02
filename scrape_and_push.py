@@ -55,12 +55,13 @@ class DisciplinaryCasesSpider(scrapy.Spider):
             self.total_cases += 1
 
 def run_spider_and_push():
-    spider = DisciplinaryCasesSpider()
     process = CrawlerProcess(settings={"LOG_LEVEL": "ERROR"})
-    process.crawl(spider)
+    process.crawl(DisciplinaryCasesSpider)
     process.start()
 
-    df = pd.DataFrame(spider.results)
+    # Use the results stored in the spider class
+    spider_instance = DisciplinaryCasesSpider()
+    df = pd.DataFrame(spider_instance.results)
     os.makedirs("tuchrecht_data", exist_ok=True)
     df.to_csv("tuchrecht_data/data.csv", index=False)
 
