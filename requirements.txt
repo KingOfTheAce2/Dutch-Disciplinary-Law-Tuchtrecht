@@ -1,2 +1,4 @@
 requests
 huggingface_hub
+scrapy==2.11.1
+pandas==2.2.2
