@@ -20,6 +20,6 @@ jobs:
 
       - name: Run upload script
         env:
-          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          HUGGINGFACE_TOKEN: ${{ secrets.HF_TOKEN }}
         run: |
           python upload_50_to_huggingface.py
