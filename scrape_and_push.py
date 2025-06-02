@@ -1,11 +1,8 @@
-# scrape_and_push.py
-
 import scrapy
 from scrapy.crawler import CrawlerProcess
 from urllib.parse import urlencode
 import json
 import os
-import pandas as pd
 from huggingface_hub import HfApi, Repository
 
 MAX_CASES = 50
@@ -13,33 +10,32 @@ MAX_CASES = 50
 class DisciplinaryCasesSpider(scrapy.Spider):
     name = "disciplinary_cases"
     base_url = "https://tuchtrecht.overheid.nl/Search/Search?"
-    results = []
     total_cases = 0
 
+    custom_settings = {
+        "FEED_EXPORT_FIELDS": ["URL", "decision", "source"]
+    }
+
     def start_requests(self):
-        for beroepsgroep in self.beroepsgroepen:
-            if self.total_cases >= MAX_CASES:
-                break
-            params = {
-                "SearchJson": json.dumps({
-                    "Beroep": beroepsgroep
-                })
-            }
-            url = self.base_url + urlencode(params)
-            yield scrapy.Request(url=url, callback=self.parse_search_results, meta={"beroepsgroep": beroepsgroep})
+        # No filters at all – get all cases
+        params = {
+            "SearchJson": json.dumps({})
+        }
+        url = self.base_url + urlencode(params)
+        yield scrapy.Request(url=url, callback=self.parse_search_results)
 
     def parse_search_results(self, response):
         if self.total_cases >= MAX_CASES:
             return
-        beroepsgroep = response.meta["beroepsgroep"]
         case_links = response.css(".result-list a::attr(href)").getall()
         for link in case_links:
             if self.total_cases >= MAX_CASES:
                 return
-            yield response.follow(url=link, callback=self.parse_case_details, meta={"beroepsgroep": beroepsgroep})
+            yield response.follow(url=link, callback=self.parse_case_details)
+
         next_page = response.css(".pagination-next a::attr(href)").get()
         if next_page and self.total_cases < MAX_CASES:
-            yield response.follow(url=next_page, callback=self.parse_search_results, meta={"beroepsgroep": beroepsgroep})
+            yield response.follow(url=next_page, callback=self.parse_search_results)
 
     def parse_case_details(self, response):
         if self.total_cases >= MAX_CASES:
@@ -47,28 +43,36 @@ class DisciplinaryCasesSpider(scrapy.Spider):
         ecli = response.css(".ecli::text").get()
         decision = response.css(".decision::text").get()
         if ecli and decision:
-            self.results.append({
+            self.total_cases += 1
+            yield {
                 "URL": f"https://tuchtrecht.overheid.nl/{ecli}",
                 "decision": decision.strip(),
                 "source": "Open Data Tuchrecht"
-            })
-            self.total_cases += 1
+            }
 
 def run_spider_and_push():
-    process = CrawlerProcess(settings={"LOG_LEVEL": "ERROR"})
+    os.makedirs("tuchrecht_data", exist_ok=True)
+    process = CrawlerProcess(settings={
+        "LOG_LEVEL": "ERROR",
+        "FEEDS": {
+            "tuchrecht_data/data.csv": {
+                "format": "csv",
+                "overwrite": True,
+            },
+        },
+    })
     process.crawl(DisciplinaryCasesSpider)
     process.start()
 
-    # Use the results stored in the spider class
-    spider_instance = DisciplinaryCasesSpider()
-    df = pd.DataFrame(spider_instance.results)
-    os.makedirs("tuchrecht_data", exist_ok=True)
-    df.to_csv("tuchrecht_data/data.csv", index=False)
-
     hf_token = os.getenv("HF_TOKEN")
-    repo_url = HfApi().create_repo(token=hf_token, repo_id="vGassen/Dutch-Disciplinary-Law-Tuchtrecht", repo_type="dataset", exist_ok=True)
+    repo_url = HfApi().create_repo(
+        token=hf_token,
+        repo_id="vGassen/Dutch-Disciplinary-Law-Tuchtrecht",
+        repo_type="dataset",
+        exist_ok=True
+    )
     repo = Repository(local_dir="tuchrecht_data", clone_from=repo_url, token=hf_token)
-    repo.push_to_hub(commit_message="Initial 50-case scrape")
+    repo.push_to_hub(commit_message="Scraped 50 tuchtrecht cases")
 
 if __name__ == "__main__":
     run_spider_and_push()
