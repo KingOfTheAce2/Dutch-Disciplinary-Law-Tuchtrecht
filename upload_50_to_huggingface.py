@@ -5,7 +5,7 @@ from huggingface_hub import HfApi
 import json
 
 # Config
-HUGGINGFACE_TOKEN = os.getenv("HF_TOKEN")
+HUGGINGFACE_TOKEN = os.getenv("HUGGINGFACE_TOKEN")
 REPO_ID = "vGassen/Dutch-Disciplinary-Law-Tuchtrecht"
 BASE_URL = "https://repository.overheid.nl/sru"
 NS = {
@@ -41,7 +41,7 @@ def parse_record(record):
     }, ecli
 
 def upload_records(records):
-    api = HfApi(token=HF_TOKEN)
+    api = HfApi(token=HUGGINGFACE_TOKEN)
     for entry, ecli in records:
         filename = f"data/{ecli}.json"
         content_bytes = json.dumps(entry, ensure_ascii=False, indent=2).encode("utf-8")
@@ -55,7 +55,7 @@ def upload_records(records):
 
 if __name__ == "__main__":
     if not HUGGINGFACE_TOKEN:
-        raise RuntimeError("Missing HF_TOKEN environment variable")
+        raise RuntimeError("Missing HUGGINGFACE_TOKEN environment variable")
 
     records = []
     raw_records = fetch_eclis()
