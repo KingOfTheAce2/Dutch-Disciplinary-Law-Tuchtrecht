@@ -1,15 +1,10 @@
-name: Publish uitspraak to Hugging Face
+name: Push 50 Tuchtrecht Cases to Hugging Face
 
 on:
   workflow_dispatch:
-    inputs:
-      ecli:
-        description: 'ECLI identifier'
-        required: true
-        type: string
 
 jobs:
-  push-uitspraak:
+  push-to-huggingface:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -27,4 +22,4 @@ jobs:
         env:
           HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
         run: |
-          python upload_to_huggingface.py "${{ github.event.inputs.ecli }}"
+          python upload_50_to_huggingface.py
