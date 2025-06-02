@@ -1,0 +1,30 @@
+name: Publish uitspraak to Hugging Face
+
+on:
+  workflow_dispatch:
+    inputs:
+      ecli:
+        description: 'ECLI identifier'
+        required: true
+        type: string
+
+jobs:
+  push-uitspraak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.11
+
+      - name: Install dependencies
+        run: |
+          pip install requests huggingface_hub
+
+      - name: Run upload script
+        env:
+          HUGGINGFACE_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+        run: |
+          python upload_to_huggingface.py "${{ github.event.inputs.ecli }}"
