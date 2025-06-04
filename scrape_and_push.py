@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 import json
 import os
 from huggingface_hub import HfApi, Repository
+import shutil
 
 MAX_CASES = 50
 
@@ -52,14 +53,21 @@ class DisciplinaryCasesSpider(scrapy.Spider):
 
 def run_spider_and_push():
     hf_token = os.getenv("HF_TOKEN")
+    if not hf_token:
+        raise RuntimeError("HF_TOKEN environment variable not set")
+
     repo_url = HfApi().create_repo(
         token=hf_token,
         repo_id="vGassen/Dutch-Disciplinary-Law-Tuchtrecht",
         repo_type="dataset",
-        exist_ok=True
+        exist_ok=True,
     )
 
-    repo = Repository(local_dir="tuchrecht_data", clone_from=repo_url, token=hf_token)
+    local_dir = "tuchrecht_data"
+    if os.path.exists(local_dir) and not os.path.isdir(os.path.join(local_dir, ".git")):
+        shutil.rmtree(local_dir)
+
+    repo = Repository(local_dir=local_dir, clone_from=repo_url, token=hf_token)
 
     csv_path = os.path.join(repo.local_dir, "data.csv")
     process = CrawlerProcess(settings={
