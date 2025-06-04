@@ -51,11 +51,20 @@ class DisciplinaryCasesSpider(scrapy.Spider):
             }
 
 def run_spider_and_push():
-    os.makedirs("tuchrecht_data", exist_ok=True)
+    hf_token = os.getenv("HF_TOKEN")
+    repo_url = HfApi().create_repo(
+        token=hf_token,
+        repo_id="vGassen/Dutch-Disciplinary-Law-Tuchtrecht",
+        repo_type="dataset",
+        exist_ok=True
+    )
+
+    repo = Repository(local_dir="tuchrecht_data", clone_from=repo_url, token=hf_token)
+
     process = CrawlerProcess(settings={
         "LOG_LEVEL": "ERROR",
         "FEEDS": {
-            "tuchrecht_data/data.csv": {
+            f"{repo.local_dir}/data.csv": {
                 "format": "csv",
                 "overwrite": True,
             },
@@ -64,14 +73,6 @@ def run_spider_and_push():
     process.crawl(DisciplinaryCasesSpider)
     process.start()
 
-    hf_token = os.getenv("HF_TOKEN")
-    repo_url = HfApi().create_repo(
-        token=hf_token,
-        repo_id="vGassen/Dutch-Disciplinary-Law-Tuchtrecht",
-        repo_type="dataset",
-        exist_ok=True
-    )
-    repo = Repository(local_dir="tuchrecht_data", clone_from=repo_url, token=hf_token)
     repo.push_to_hub(commit_message="Scraped 50 tuchtrecht cases")
 
 if __name__ == "__main__":
