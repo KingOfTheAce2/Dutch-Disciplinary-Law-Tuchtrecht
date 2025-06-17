@@ -35,7 +35,6 @@ HF_USERNAME = os.environ.get("HF_USERNAME", "YOUR_HUGGINGFACE_USERNAME")
 HF_DATASET_NAME = "Dutch-Disciplinary-Law-Tuchtrecht"
 HF_REPO_ID = f"{HF_USERNAME}/{HF_DATASET_NAME}"
 
-
 def fetch_xml() -> bytes:
     """Download XML records from the SRU endpoint."""
     resp = requests.get(URL, params=PARAMS, timeout=20)

@@ -27,14 +27,12 @@ Or add to cron to automate daily.
 
 Set the following environment variables before running the fetch script:
 
-* `HF_USERNAME` – your Hugging Face username
 * `HF_TOKEN` – an access token with write permissions
 
-The dataset will be created under `<HF_USERNAME>/Dutch-Disciplinary-Law-Tuchtrecht`.
+The dataset will be created under `vGassen/Dutch-Disciplinary-Law-Tuchtrecht`.
 
 ## GitHub Actions
 
 A workflow is included to automate fetching. It runs every Sunday and can also
-be triggered manually from the Actions tab. Configure the `HF_USERNAME` and
-`HF_TOKEN` secrets in your repository settings so the script can push the latest
-data to Hugging Face.
+be triggered manually from the Actions tab. Configure the `HF_TOKEN` secret in
+your repository settings so the script can push the latest data to Hugging Face.
