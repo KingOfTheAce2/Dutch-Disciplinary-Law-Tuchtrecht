@@ -31,9 +31,9 @@ NS = {
     "dcterms": "http://purl.org/dc/terms/",
 }
 
-HF_USERNAME = os.environ.get("HF_USERNAME", "YOUR_HUGGINGFACE_USERNAME")
-HF_DATASET_NAME = "Dutch-Disciplinary-Law-Tuchtrecht"
-HF_REPO_ID = f"{HF_USERNAME}/{HF_DATASET_NAME}"
+# Dataset on Hugging Face to push the records to
+HF_REPO_ID = "vGassen/Dutch-Disciplinary-Law-Tuchtrecht"
+
 
 def fetch_xml() -> bytes:
     """Download XML records from the SRU endpoint."""
