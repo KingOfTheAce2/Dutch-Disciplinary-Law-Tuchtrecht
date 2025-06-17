@@ -36,3 +36,4 @@ The dataset will be created under `vGassen/Dutch-Disciplinary-Law-Tuchtrecht`.
 A workflow is included to automate fetching. It runs every Sunday and can also
 be triggered manually from the Actions tab. Configure the `HF_TOKEN` secret in
 your repository settings so the script can push the latest data to Hugging Face.
+Ensure the workflow has permission to push by adding `permissions: contents: write`.
