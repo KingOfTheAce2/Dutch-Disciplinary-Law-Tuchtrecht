@@ -7,8 +7,10 @@ This project fetches daily data from the Tuchtrecht SRU endpoint provided by the
 
 ## Setup
 
+Use Python 3.11 which has pre-built wheels for all dependencies:
+
 ```bash
-pip install -r requirements.txt
+python3.11 -m pip install -r requirements.txt
 ```
 
 ## Daily Fetch Script
