@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
 """
-Crawl every disciplinary ruling (≈ 45 k) from https://tuchtrecht.overheid.nl
-and produce a newline-delimited JSONL with fields:
-  - url: canonical ruling URL
-  - content: all visible textual content
-  - source: "Tuchtrecht"
+Crawl all disciplinary rulings (≈ 45 k) from https://tuchtrecht.overheid.nl
+into tuchtrecht.jsonl, one JSON per line:
+  {"url":…, "content":…, "source":"Tuchtrecht"}
 
 Supports:
-* Resumable runs via visited.txt
-* Throttling (1–2 s) and retries on HTTP errors
-* Periodic flush to tuchtrecht.jsonl
-* HF Hub upload when HF_TOKEN and HF_REPO are set
+ • Resumable via visited.txt
+ • 1–2 s polite delay + automatic retries
+ • Flush every 100 items
+ • Push to HF Hub if HF_TOKEN & HF_REPO are set
 """
 
 import argparse
@@ -41,14 +39,13 @@ BASE_TUCH     = "https://tuchtrecht.overheid.nl"
 OUT_FILE      = Path("tuchtrecht.jsonl")
 VISITED_FILE  = Path("visited.txt")
 SOURCE_NAME   = "Tuchtrecht"
-# HF upload settings (via GitHub Secrets)
-HF_TOKEN = os.getenv("HF_TOKEN")
-HF_REPO  = os.getenv("HF_REPO", "YOURUSER/tuchtrecht-uitspraken")
+HF_TOKEN      = os.getenv("HF_TOKEN")
+HF_REPO       = os.getenv("HF_REPO", "YOURUSER/tuchtrecht-uitspraken")
 # ---------------------------------------------------------------------------- #
 
 
 def build_session() -> requests.Session:
-    """Create a requests.Session with retry/backoff."""
+    """Session with retry/backoff and a polite UA."""
     sess = requests.Session()
     retries = Retry(
         total=5,
@@ -65,57 +62,53 @@ def build_session() -> requests.Session:
 
 def list_case_urls(session: requests.Session) -> Generator[str, None, None]:
     """
-    Walk through the paginated HTML search results and yield each ruling URL.
+    Walk the paginated HTML search results and yield each ruling URL.
     """
-    # Fetch first page to determine total number of results
-    params0 = {"itemsPerPage": ITEMS_PER_PAGE, "page": 0}
-    resp = session.get(BASE_SEARCH, params=params0, timeout=30)
+    # 1) Prime the pump: get page 0 and find the total count by regex
+    resp = session.get(BASE_SEARCH, params={"itemsPerPage": ITEMS_PER_PAGE, "page": 0}, timeout=30)
     resp.raise_for_status()
     soup = bs4.BeautifulSoup(resp.text, "lxml")
-
-    stats = soup.select_one("div.search__stats")
-    total = int(re.search(r"van de\s+(\d+)", stats.text).group(1))
+    text = soup.get_text(separator=" ", strip=True)
+    m = re.search(r"van de\s+(\d+)\s+result", text)
+    if not m:
+        raise RuntimeError("⚠️ Couldn't locate total number of results on page 0")
+    total = int(m.group(1))
     pages = math.ceil(total / ITEMS_PER_PAGE)
 
+    # 2) Iterate each page
     for page in range(pages):
-        params = {"itemsPerPage": ITEMS_PER_PAGE, "page": page}
-        resp = session.get(BASE_SEARCH, params=params, timeout=30)
+        resp = session.get(BASE_SEARCH, params={"itemsPerPage": ITEMS_PER_PAGE, "page": page}, timeout=30)
         resp.raise_for_status()
         soup = bs4.BeautifulSoup(resp.text, "lxml")
 
-        # Each result link has class "uitspraak__link"
-        for a in soup.select("a.uitspraak__link"):
-            href = a.get("href")
-            if href:
-                yield urljoin(BASE_TUCH, href)
+        # Find any <a href="/zoeken/resultaat/uitspraak/...">
+        for a in soup.find_all("a", href=re.compile(r"^/zoeken/resultaat/uitspraak/")):
+            yield urljoin(BASE_TUCH, a["href"])
 
+        # polite delay
         time.sleep(random.uniform(1.0, 2.0))
 
 
 def visible_text(html: str) -> str:
-    """
-    Extract and normalize all visible text from the main content area.
-    """
+    """Extract and normalize all visible text from <main> (or body fallback)."""
     soup = bs4.BeautifulSoup(html, "lxml")
     container = soup.find("main") or soup.body
-    text = container.get_text(separator="\n", strip=True)
-    return " ".join(text.split())
+    raw = container.get_text(separator="\n", strip=True)
+    return " ".join(raw.split())
 
 
 def crawl_one(url: str, session: requests.Session) -> dict | None:
-    """
-    Fetch a single ruling page, extract its text, and return the record dict.
-    """
+    """Fetch one ruling, extract text, return JSON-ready dict or None on failure."""
     try:
         resp = session.get(url, timeout=30)
         resp.raise_for_status()
         content = visible_text(resp.text)
         if len(content) < 200:
-            # skip pages with too little content
+            # skip spurious pages
             return None
         return {"url": url, "content": content, "source": SOURCE_NAME}
     except Exception as e:
-        print(f"[WARN] Failed to fetch {url}: {e}", file=sys.stderr)
+        print(f"[WARN] {url} → {e}", file=sys.stderr)
         return None
 
 
@@ -155,10 +148,8 @@ def push_to_hf() -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--hard-reset", action="store_true",
-        help="ignore existing visited.txt and start fresh"
-    )
+    parser.add_argument("--hard-reset", action="store_true",
+                        help="ignore visited.txt and start from scratch")
     args = parser.parse_args()
 
     visited = set() if args.hard_reset else load_visited()
@@ -176,7 +167,7 @@ def main() -> None:
             new_rows.append(rec)
             new_visited.append(page_url)
 
-        # flush every 100 new items
+        # flush every 100 items
         if len(new_rows) >= 100:
             append_jsonl(new_rows)
             append_visited(new_visited)
@@ -189,9 +180,9 @@ def main() -> None:
         append_jsonl(new_rows)
         append_visited(new_visited)
 
-    print(f"✅ Completed crawl; total visited: {len(visited) + len(new_visited)}")
+    print(f"✅ Done crawling. Total visited: {len(visited) + len(new_visited)}")
 
-    # push to HF
+    # optionally push to HF
     push_to_hf()
 
 
