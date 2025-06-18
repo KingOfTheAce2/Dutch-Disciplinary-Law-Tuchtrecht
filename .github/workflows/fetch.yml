@@ -1,44 +1,39 @@
-name: Fetch Tuchtrecht Data
+name: Crawl & publish tuchtrecht
 
 on:
-  workflow_dispatch:
+  workflow_dispatch:            # manual trigger
   schedule:
-    - cron: '0 0 * * 0'
-
-permissions:
-  contents: write
+    - cron: '37 2 * * *'        # daily, off‑peak (02:37 UTC)
 
 jobs:
-  fetch:
+  crawl:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write            # to commit / push visited.txt
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install deps
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run fetch script
+      - name: Run crawler
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_REPO:  ${{ secrets.HF_REPO }}
         run: python fetch_tuchtrecht.py
 
-      - name: Commit new data
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Commit progress artefacts
         run: |
-          git config user.name github-actions
-          git config user.email github-actions@github.com
-          git add data/*.xml
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update tuchtrecht data"
-            git push https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git HEAD:${{ github.ref }}
-          fi
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add visited.txt tuchtrecht.jsonl || true
+          git diff --cached --quiet || git commit -m "Update dataset ($(date -u))"
+          git push
