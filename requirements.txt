@@ -1,5 +1,6 @@
-requests
-huggingface_hub
-datasets
-scrapy==2.11.1
-pandas==2.2.2
+beautifulsoup4==4.12.3
+datasets>=2.19.0
+huggingface_hub>=0.23.0
+lxml>=5.2.1
+requests>=2.32.2
+tqdm>=4.66.4
