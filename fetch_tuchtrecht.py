@@ -1,115 +1,124 @@
 #!/usr/bin/env python3
 """
-Crawl every public disciplinary ruling (±45 k) on https://tuchtrecht.overheid.nl
-and create a newline–delimited JSON file with the schema
+Crawl every disciplinary ruling (≈ 45 k) from https://tuchtrecht.overheid.nl
+and produce a newline-delimited JSONL with fields:
+  - url: canonical ruling URL
+  - content: all visible textual content
+  - source: "Tuchtrecht"
 
-    {"url": <canonical_page>, "content": <all_visible_text>, "source": "Tuchtrecht"}
-
-The script is **idempotent** and resumable:
-* `visited.txt` – one URL per line, acts as the checkpoint.
-* `tuchtrecht.jsonl` – the resulting dataset (append‑only).
-
-It throttles requests (1‑2 s) and retries automatically.
-After a successful run it pushes the dataset to the Hugging Face Hub.
+Supports:
+* Resumable runs via visited.txt
+* Throttling (1–2 s) and retries on HTTP errors
+* Periodic flush to tuchtrecht.jsonl
+* HF Hub upload when HF_TOKEN and HF_REPO are set
 """
-
-from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import random
+import re
 import sys
 import time
 from pathlib import Path
 from typing import Generator, Iterable
+from urllib.parse import urljoin
 
 import bs4
 import requests
-from datasets import Dataset
-from huggingface_hub import HfApi, login
 from requests.adapters import HTTPAdapter, Retry
 from tqdm import tqdm
+from datasets import Dataset
+from huggingface_hub import HfApi, login
 
-# ---------------------------------------------------------------------------#
-# Configuration – adjust only if you really have to
-# ---------------------------------------------------------------------------#
-BATCH = 100                       # records returned per SRU call (max 100)
-BASE_SRU = (
-    "https://repository.overheid.nl/sru/Search?"
-    "x-connection=tuchtrecht&recordPacking=json"
-    "&maximumRecords={batch}&startRecord={start}"
-)
-CANONICAL = "https://tuchtrecht.overheid.nl/{eid}"          # eid = ECLI with '_'s
-OUT_FILE = Path("tuchtrecht.jsonl")
-VISITED_FILE = Path("visited.txt")
-SOURCE = "Tuchtrecht"
-
-HF_REPO = os.getenv("HF_REPO", "YOURUSER/tuchtrecht-uitspraken")
-HF_TOKEN = os.getenv("HF_TOKEN")          # passed via GitHub Secrets
-# ---------------------------------------------------------------------------#
+# ---------------------------------------------------------------------------- #
+# Configuration
+# ---------------------------------------------------------------------------- #
+ITEMS_PER_PAGE = 50
+BASE_SEARCH   = "https://tuchtrecht.overheid.nl/zoeken/resultaat"
+BASE_TUCH     = "https://tuchtrecht.overheid.nl"
+OUT_FILE      = Path("tuchtrecht.jsonl")
+VISITED_FILE  = Path("visited.txt")
+SOURCE_NAME   = "Tuchtrecht"
+# HF upload settings (via GitHub Secrets)
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_REPO  = os.getenv("HF_REPO", "YOURUSER/tuchtrecht-uitspraken")
+# ---------------------------------------------------------------------------- #
 
 
-def sru_records(session: requests.Session) -> Generator[dict, None, None]:
-    """Generator that yields every SRU record as JSON."""
-    start = 1
-    with tqdm(desc="Fetching SRU batches") as bar:
-        while True:
-            url = BASE_SRU.format(batch=BATCH, start=start)
-            resp = session.get(url, timeout=30)
-            resp.raise_for_status()
-            data = resp.json()["searchRetrieveResponse"]
-
-            records = data["records"]["record"]
-            if isinstance(records, dict):      # single item edge‑case
-                records = [records]
-
-            if not records:
-                break
-
-            for rec in records:
-                yield rec
-
-            nxt = data.get("nextRecordPosition")
-            if not nxt or int(nxt) <= start:
-                break
-            bar.update(len(records))
-            start = int(nxt)
+def build_session() -> requests.Session:
+    """Create a requests.Session with retry/backoff."""
+    sess = requests.Session()
+    retries = Retry(
+        total=5,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET"],
+    )
+    sess.mount("https://", HTTPAdapter(max_retries=retries))
+    sess.headers.update({
+        "User-Agent": "tuchtrecht-crawler (+https://github.com/your/repo; you@example.com)"
+    })
+    return sess
 
 
-def record_to_page_url(record: dict) -> str:
-    """Convert SRU record to canonical ruling URL."""
-    ecli: str = record["recordData"]["gzd"]["originalData"]["meta"]["owmskern"]["identifier"]
-    ecli_url = ecli.replace(":", "_")        # ECLI:NL:XXX -> ECLI_NL_XXX
-    return CANONICAL.format(eid=ecli_url)
+def list_case_urls(session: requests.Session) -> Generator[str, None, None]:
+    """
+    Walk through the paginated HTML search results and yield each ruling URL.
+    """
+    # Fetch first page to determine total number of results
+    params0 = {"itemsPerPage": ITEMS_PER_PAGE, "page": 0}
+    resp = session.get(BASE_SEARCH, params=params0, timeout=30)
+    resp.raise_for_status()
+    soup = bs4.BeautifulSoup(resp.text, "lxml")
+
+    stats = soup.select_one("div.search__stats")
+    total = int(re.search(r"van de\s+(\d+)", stats.text).group(1))
+    pages = math.ceil(total / ITEMS_PER_PAGE)
+
+    for page in range(pages):
+        params = {"itemsPerPage": ITEMS_PER_PAGE, "page": page}
+        resp = session.get(BASE_SEARCH, params=params, timeout=30)
+        resp.raise_for_status()
+        soup = bs4.BeautifulSoup(resp.text, "lxml")
+
+        # Each result link has class "uitspraak__link"
+        for a in soup.select("a.uitspraak__link"):
+            href = a.get("href")
+            if href:
+                yield urljoin(BASE_TUCH, href)
+
+        time.sleep(random.uniform(1.0, 2.0))
 
 
 def visible_text(html: str) -> str:
-    """Extract all visible text from a ruling page."""
+    """
+    Extract and normalize all visible text from the main content area.
+    """
     soup = bs4.BeautifulSoup(html, "lxml")
-    # The main content lives in <main>, but fall back to body
     container = soup.find("main") or soup.body
     text = container.get_text(separator="\n", strip=True)
-    return " ".join(text.split())            # normalise whitespace
+    return " ".join(text.split())
 
 
 def crawl_one(url: str, session: requests.Session) -> dict | None:
-    """Download & parse a single ruling. Returns ready‑to‑dump dict or None."""
+    """
+    Fetch a single ruling page, extract its text, and return the record dict.
+    """
     try:
         resp = session.get(url, timeout=30)
         resp.raise_for_status()
         content = visible_text(resp.text)
-        if len(content) < 200:               # rudimentary quality gate
+        if len(content) < 200:
+            # skip pages with too little content
             return None
-        return {"url": url, "content": content, "source": SOURCE}
-    except Exception as exc:                 # noqa: BLE001
-        print(f"[WARN] {url} failed: {exc}", file=sys.stderr)
+        return {"url": url, "content": content, "source": SOURCE_NAME}
+    except Exception as e:
+        print(f"[WARN] Failed to fetch {url}: {e}", file=sys.stderr)
         return None
 
 
-# ---------------------------------------------------------------------------#
-# I/O helpers
-# ---------------------------------------------------------------------------#
 def load_visited() -> set[str]:
     if not VISITED_FILE.exists():
         return set()
@@ -119,7 +128,7 @@ def load_visited() -> set[str]:
 def append_visited(urls: Iterable[str]) -> None:
     with VISITED_FILE.open("a", encoding="utf-8") as f:
         for u in urls:
-            f.write(f"{u}\n")
+            f.write(u + "\n")
 
 
 def append_jsonl(rows: Iterable[dict]) -> None:
@@ -128,54 +137,46 @@ def append_jsonl(rows: Iterable[dict]) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-# ---------------------------------------------------------------------------#
-def build_session() -> requests.Session:
-    """Shared HTTP session with retries & politeness."""
-    sess = requests.Session()
-    retries = Retry(
-        total=5,
-        backoff_factor=1,
-        status_forcelist=[429, 500, 502, 503, 504],
-        allowed_methods=["GET"],
+def push_to_hf() -> None:
+    if not HF_TOKEN:
+        print("HF_TOKEN not set; skipping Hugging Face upload.")
+        return
+    login(token=HF_TOKEN)
+    api = HfApi()
+    api.create_repo(repo_id=HF_REPO, repo_type="dataset", exist_ok=True)
+    api.upload_file(
+        repo_id=HF_REPO,
+        path_or_fileobj=str(OUT_FILE),
+        path_in_repo=OUT_FILE.name,
+        repo_type="dataset",
     )
-    sess.mount("https://", HTTPAdapter(max_retries=retries))
-    sess.headers.update(
-        {
-            "User-Agent": (
-                "tuchtrecht-crawler (+https://github.com/your/repo;"
-                " contact: you@example.com)"
-            )
-        }
-    )
-    return sess
+    print(f"✅ Dataset pushed to Hugging Face: {HF_REPO}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--hard-reset", action="store_true",
-                        help="ignore existing visited file")
+    parser.add_argument(
+        "--hard-reset", action="store_true",
+        help="ignore existing visited.txt and start fresh"
+    )
     args = parser.parse_args()
 
     visited = set() if args.hard_reset else load_visited()
-    new_visited: list[str] = []
     new_rows: list[dict] = []
+    new_visited: list[str] = []
 
     session = build_session()
 
-    for rec in sru_records(session):
-        page = record_to_page_url(rec)
-        if page in visited:
+    for page_url in tqdm(list_case_urls(session), desc="Crawling rulings"):
+        if page_url in visited:
             continue
 
-        row = crawl_one(page, session)
-        if row:
-            new_rows.append(row)
-            new_visited.append(page)
+        rec = crawl_one(page_url, session)
+        if rec:
+            new_rows.append(rec)
+            new_visited.append(page_url)
 
-        # polite crawl delay
-        time.sleep(random.uniform(1.0, 2.0))
-
-        # flush periodically (every 100)
+        # flush every 100 new items
         if len(new_rows) >= 100:
             append_jsonl(new_rows)
             append_visited(new_visited)
@@ -188,22 +189,10 @@ def main() -> None:
         append_jsonl(new_rows)
         append_visited(new_visited)
 
-    print(f"Collected {len(visited) + len(new_visited)} records so far.")
+    print(f"✅ Completed crawl; total visited: {len(visited) + len(new_visited)}")
 
-    # Push to HF if token is available
-    if HF_TOKEN:
-        login(token=HF_TOKEN)
-        api = HfApi()
-        api.create_repo(repo_id=HF_REPO, repo_type="dataset", exist_ok=True)
-        api.upload_file(
-            repo_id=HF_REPO,
-            path_or_fileobj=str(OUT_FILE),
-            path_in_repo="tuchtrecht.jsonl",
-            repo_type="dataset",
-        )
-        print("Dataset pushed to the Hub.")
-    else:
-        print("HF_TOKEN not set – skipping Hub upload.")
+    # push to HF
+    push_to_hf()
 
 
 if __name__ == "__main__":
