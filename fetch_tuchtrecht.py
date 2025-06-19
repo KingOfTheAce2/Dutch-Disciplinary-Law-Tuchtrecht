@@ -69,10 +69,10 @@ def list_case_urls(session: requests.Session) -> Generator[str, None, None]:
     resp.raise_for_status()
     soup = bs4.BeautifulSoup(resp.text, "lxml")
     text = soup.get_text(separator=" ", strip=True)
-    m = re.search(r"van de\s+(\d+)\s+result", text)
+    m = re.search(r"van de\s+([0-9\.\s]+)\s+result", text)
     if not m:
         raise RuntimeError("⚠️ Couldn't locate total number of results on page 0")
-    total = int(m.group(1))
+    total = int(m.group(1).replace(".", "").replace(" ", ""))
     pages = math.ceil(total / ITEMS_PER_PAGE)
 
     # 2) Iterate each page
@@ -90,11 +90,46 @@ def list_case_urls(session: requests.Session) -> Generator[str, None, None]:
 
 
 def visible_text(html: str) -> str:
-    """Extract and normalize all visible text from <main> (or body fallback)."""
+    """Extract and normalize all visible text from <main> while dropping
+    navigation, footer and privacy-sensitive lines."""
     soup = bs4.BeautifulSoup(html, "lxml")
+
+    # remove obvious non-content tags
+    for tag in soup.find_all(["header", "footer", "nav", "script", "style"]):
+        tag.decompose()
+
     container = soup.find("main") or soup.body
+    if container is None:
+        return ""
+
     raw = container.get_text(separator="\n", strip=True)
-    return " ".join(raw.split())
+
+    # filter header/footer boilerplate
+    exclude_phrases = [
+        "Direct naar content",
+        "Print Download PDF",
+        "Terug naar zoekresultaten",
+        "Over deze website",
+        "Privacy en cookies",
+        "Toegankelijkheid",
+        "Sitemap",
+        "Open data",
+        "Linked Data",
+        "MijnOverheid.nl",
+        "Rijksoverheid.nl",
+        "Ondernemersplein.nl",
+        "Werkenbijdeoverheid.nl",
+        "U bent hier:",
+    ]
+
+    lines = [l for l in raw.splitlines() if not any(p in l for p in exclude_phrases)]
+    text = "\n".join(lines)
+
+    # remove privacy-sensitive closing paragraph if present
+    text = re.sub(r"Deze beslissing is gegeven door:.*?(?:Voorzitter|Secretaris).*?w\.g\.\s*", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(r"Uitgesproken ter openbare zitting.*?w\.g\.\s*", "", text, flags=re.DOTALL | re.IGNORECASE)
+
+    return " ".join(text.split())
 
 
 def crawl_one(url: str, session: requests.Session) -> dict | None:
