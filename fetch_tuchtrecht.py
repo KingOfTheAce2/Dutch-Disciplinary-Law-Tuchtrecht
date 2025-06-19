@@ -36,12 +36,25 @@ from huggingface_hub import HfApi, login
 ITEMS_PER_PAGE = 50
 BASE_SEARCH   = "https://tuchtrecht.overheid.nl/zoeken/resultaat"
 BASE_TUCH     = "https://tuchtrecht.overheid.nl"
-OUT_FILE      = Path("tuchtrecht.jsonl")
+SHARDS_DIR    = Path("shards")
+OUT_FILE      = None  # will be set in main()
 VISITED_FILE  = Path("visited.txt")
 SOURCE_NAME   = "Tuchtrecht"
 HF_TOKEN      = os.getenv("HF_TOKEN")
 HF_REPO       = os.getenv("HF_REPO", "YOURUSER/tuchtrecht-uitspraken")
 # ---------------------------------------------------------------------------- #
+
+
+def next_shard_path() -> Path:
+    """Return a new shard path like shards/shard_00001.jsonl"""
+    SHARDS_DIR.mkdir(exist_ok=True)
+    existing = [
+        int(p.stem.split('_')[1])
+        for p in SHARDS_DIR.glob('shard_*.jsonl')
+        if p.stem.startswith('shard_')
+    ]
+    idx = max(existing) + 1 if existing else 0
+    return SHARDS_DIR / f"shard_{idx:05d}.jsonl"
 
 
 def build_session() -> requests.Session:
@@ -159,13 +172,13 @@ def append_visited(urls: Iterable[str]) -> None:
             f.write(u + "\n")
 
 
-def append_jsonl(rows: Iterable[dict]) -> None:
-    with OUT_FILE.open("a", encoding="utf-8") as f:
+def append_jsonl(rows: Iterable[dict], out_file: Path) -> None:
+    with out_file.open("a", encoding="utf-8") as f:
         for row in rows:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
-def push_to_hf() -> None:
+def push_to_hf(out_file: Path) -> None:
     if not HF_TOKEN:
         print("HF_TOKEN not set; skipping Hugging Face upload.")
         return
@@ -174,8 +187,8 @@ def push_to_hf() -> None:
     api.create_repo(repo_id=HF_REPO, repo_type="dataset", exist_ok=True)
     api.upload_file(
         repo_id=HF_REPO,
-        path_or_fileobj=str(OUT_FILE),
-        path_in_repo=OUT_FILE.name,
+        path_or_fileobj=str(out_file),
+        path_in_repo=out_file.name,
         repo_type="dataset",
     )
     print(f"✅ Dataset pushed to Hugging Face: {HF_REPO}")
@@ -185,11 +198,18 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--hard-reset", action="store_true",
                         help="ignore visited.txt and start from scratch")
+    parser.add_argument("--limit", type=int, default=5000,
+                        help="maximum number of new rulings to crawl")
     args = parser.parse_args()
+
+    global OUT_FILE
+    OUT_FILE = next_shard_path()
 
     visited = set() if args.hard_reset else load_visited()
     new_rows: list[dict] = []
     new_visited: list[str] = []
+    limit = args.limit
+    grabbed = 0
 
     session = build_session()
 
@@ -197,14 +217,18 @@ def main() -> None:
         if page_url in visited:
             continue
 
+        if grabbed >= limit:
+            break
+
         rec = crawl_one(page_url, session)
         if rec:
             new_rows.append(rec)
             new_visited.append(page_url)
+            grabbed += 1
 
         # flush every 100 items
         if len(new_rows) >= 100:
-            append_jsonl(new_rows)
+            append_jsonl(new_rows, OUT_FILE)
             append_visited(new_visited)
             visited.update(new_visited)
             new_rows.clear()
@@ -212,13 +236,13 @@ def main() -> None:
 
     # final flush
     if new_rows:
-        append_jsonl(new_rows)
+        append_jsonl(new_rows, OUT_FILE)
         append_visited(new_visited)
 
-    print(f"✅ Done crawling. Total visited: {len(visited) + len(new_visited)}")
+    print(f"✅ Done crawling {grabbed} items. Total visited: {len(visited) + len(new_visited)}")
 
     # optionally push to HF
-    push_to_hf()
+    push_to_hf(OUT_FILE)
 
 
 if __name__ == "__main__":

@@ -15,11 +15,14 @@ python3.11 -m pip install -r requirements.txt
 
 ## Daily Fetch Script
 
-Run manually:
+Run manually (the crawler fetches up to 5000 new rulings per run):
 
 ```bash
 python fetch_tuchtrecht.py
 ```
+
+Each run writes a new JSONL file under `shards/` and uploads it to the
+configured Hugging Face dataset.
 
 Or add to cron to automate daily.
 
