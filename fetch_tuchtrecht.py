@@ -41,7 +41,7 @@ OUT_FILE      = None  # will be set in main()
 VISITED_FILE  = Path("visited.txt")
 SOURCE_NAME   = "Tuchtrecht"
 HF_TOKEN      = os.getenv("HF_TOKEN")
-HF_REPO       = os.getenv("HF_REPO", "YOURUSER/tuchtrecht-uitspraken")
+HF_REPO       = os.getenv("HF_REPO", "vGassen/Dutch-Open-Data-Tuchrecht-Disciplinary-Court-Cases")
 # ---------------------------------------------------------------------------- #
 
 
