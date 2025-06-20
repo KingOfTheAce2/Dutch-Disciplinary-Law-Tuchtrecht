@@ -21,6 +21,9 @@ Run manually (the crawler fetches up to 5000 new rulings per run):
 python fetch_tuchtrecht.py
 ```
 
+Use `python fetch_tuchtrecht.py --hard-reset` to delete existing checkpoints
+(`visited.txt` and any JSON shards) and crawl everything again.
+
 Each run writes a new JSONL file under `shards/` and uploads it to the
 configured Hugging Face dataset.
 
@@ -32,7 +35,8 @@ Set the following environment variables before running the fetch script:
 
 * `HF_TOKEN` – an access token with write permissions
 
-The dataset will be created under `vGassen/Dutch-Disciplinary-Law-Tuchtrecht`.
+The dataset will be created under
+`vGassen/Dutch-Open-Data-Tuchrecht-Disciplinary-Court-Cases`.
 
 ## GitHub Actions
 

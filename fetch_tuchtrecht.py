@@ -41,7 +41,10 @@ OUT_FILE      = None  # will be set in main()
 VISITED_FILE  = Path("visited.txt")
 SOURCE_NAME   = "Tuchtrecht"
 HF_TOKEN      = os.getenv("HF_TOKEN")
-HF_REPO       = os.getenv("HF_REPO", "vGassen/Dutch-Open-Data-Tuchrecht-Disciplinary-Court-Cases")
+HF_REPO       = os.getenv(
+    "HF_REPO",
+    "vGassen/Dutch-Open-Data-Tuchrecht-Disciplinary-Court-Cases",
+)
 # ---------------------------------------------------------------------------- #
 
 
@@ -178,9 +181,21 @@ def append_jsonl(rows: Iterable[dict], out_file: Path) -> None:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
 
 
+def clear_checkpoints() -> None:
+    """Remove previous shards and visited.txt if they exist."""
+    if VISITED_FILE.exists():
+        VISITED_FILE.unlink()
+    if SHARDS_DIR.exists():
+        for p in SHARDS_DIR.glob("*.jsonl"):
+            p.unlink()
+
+
 def push_to_hf(out_file: Path) -> None:
     if not HF_TOKEN:
         print("HF_TOKEN not set; skipping Hugging Face upload.")
+        return
+    if not out_file.exists():
+        print(f"No new data to push: {out_file} does not exist.")
         return
     login(token=HF_TOKEN)
     api = HfApi()
@@ -196,8 +211,11 @@ def push_to_hf(out_file: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--hard-reset", action="store_true",
-                        help="ignore visited.txt and start from scratch")
+    parser.add_argument(
+        "--hard-reset",
+        action="store_true",
+        help="delete checkpoints and start from scratch",
+    )
     parser.add_argument("--limit", type=int, default=5000,
                         help="maximum number of new rulings to crawl")
     args = parser.parse_args()
@@ -205,7 +223,11 @@ def main() -> None:
     global OUT_FILE
     OUT_FILE = next_shard_path()
 
-    visited = set() if args.hard_reset else load_visited()
+    if args.hard_reset:
+        clear_checkpoints()
+        visited = set()
+    else:
+        visited = load_visited()
     new_rows: list[dict] = []
     new_visited: list[str] = []
     limit = args.limit
