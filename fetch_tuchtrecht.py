@@ -194,8 +194,10 @@ def push_to_hf(out_file: Path) -> None:
     if not HF_TOKEN:
         print("HF_TOKEN not set; skipping Hugging Face upload.")
         return
-    if not out_file.exists():
-        print(f"No new data to push: {out_file} does not exist.")
+    # Skip upload if the shard doesn't exist or isn't a file. This happens when
+    # no new rulings were crawled in the current run.
+    if not out_file.is_file():
+        print(f"No new data to push: {out_file} does not exist or is not a file.")
         return
     login(token=HF_TOKEN)
     api = HfApi()
