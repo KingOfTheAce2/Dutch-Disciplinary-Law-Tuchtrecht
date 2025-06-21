@@ -25,7 +25,8 @@ Use `python fetch_tuchtrecht.py --hard-reset` to delete existing checkpoints
 (`visited.txt` and any JSON shards) and crawl everything again.
 
 Each run writes a new JSONL file under `shards/` and uploads it to the
-configured Hugging Face dataset.
+configured Hugging Face dataset. The current shard number is stored in
+`last_shard.txt` so consecutive runs don't overwrite previous data.
 
 Or add to cron to automate daily.
 

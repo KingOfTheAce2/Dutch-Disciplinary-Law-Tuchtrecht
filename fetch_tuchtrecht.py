@@ -34,14 +34,15 @@ from huggingface_hub import HfApi, login
 # Configuration
 # ---------------------------------------------------------------------------- #
 ITEMS_PER_PAGE = 50
-BASE_SEARCH   = "https://tuchtrecht.overheid.nl/zoeken/resultaat"
-BASE_TUCH     = "https://tuchtrecht.overheid.nl"
-SHARDS_DIR    = Path("shards")
-OUT_FILE      = None  # will be set in main()
-VISITED_FILE  = Path("visited.txt")
-SOURCE_NAME   = "Tuchtrecht"
-HF_TOKEN      = os.getenv("HF_TOKEN")
-HF_REPO       = os.getenv(
+BASE_SEARCH = "https://tuchtrecht.overheid.nl/zoeken/resultaat"
+BASE_TUCH = "https://tuchtrecht.overheid.nl"
+SHARDS_DIR = Path("shards")
+SHARD_INDEX_FILE = Path("last_shard.txt")
+OUT_FILE = None  # will be set in main()
+VISITED_FILE = Path("visited.txt")
+SOURCE_NAME = "Tuchtrecht"
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_REPO = os.getenv(
     "HF_REPO",
     "vGassen/Dutch-Open-Data-Tuchrecht-Disciplinary-Court-Cases",
 )
@@ -49,14 +50,17 @@ HF_REPO       = os.getenv(
 
 
 def next_shard_path() -> Path:
-    """Return a new shard path like shards/shard_00001.jsonl"""
+    """Return a new shard path like shards/shard_00001.jsonl and persist the index
+    so consecutive runs don't overwrite previous uploads."""
     SHARDS_DIR.mkdir(exist_ok=True)
-    existing = [
-        int(p.stem.split('_')[1])
-        for p in SHARDS_DIR.glob('shard_*.jsonl')
-        if p.stem.startswith('shard_')
-    ]
-    idx = max(existing) + 1 if existing else 0
+    if SHARD_INDEX_FILE.exists():
+        try:
+            idx = int(SHARD_INDEX_FILE.read_text().strip()) + 1
+        except Exception:
+            idx = 0
+    else:
+        idx = 0
+    SHARD_INDEX_FILE.write_text(str(idx))
     return SHARDS_DIR / f"shard_{idx:05d}.jsonl"
 
 
@@ -70,9 +74,11 @@ def build_session() -> requests.Session:
         allowed_methods=["GET"],
     )
     sess.mount("https://", HTTPAdapter(max_retries=retries))
-    sess.headers.update({
-        "User-Agent": "tuchtrecht-crawler (+https://github.com/your/repo; you@example.com)"
-    })
+    sess.headers.update(
+        {
+            "User-Agent": "tuchtrecht-crawler (+https://github.com/your/repo; you@example.com)"
+        }
+    )
     return sess
 
 
@@ -81,7 +87,9 @@ def list_case_urls(session: requests.Session) -> Generator[str, None, None]:
     Walk the paginated HTML search results and yield each ruling URL.
     """
     # 1) Prime the pump: get page 0 and find the total count by regex
-    resp = session.get(BASE_SEARCH, params={"itemsPerPage": ITEMS_PER_PAGE, "page": 0}, timeout=30)
+    resp = session.get(
+        BASE_SEARCH, params={"itemsPerPage": ITEMS_PER_PAGE, "page": 0}, timeout=30
+    )
     resp.raise_for_status()
     soup = bs4.BeautifulSoup(resp.text, "lxml")
     text = soup.get_text(separator=" ", strip=True)
@@ -93,7 +101,11 @@ def list_case_urls(session: requests.Session) -> Generator[str, None, None]:
 
     # 2) Iterate each page
     for page in range(pages):
-        resp = session.get(BASE_SEARCH, params={"itemsPerPage": ITEMS_PER_PAGE, "page": page}, timeout=30)
+        resp = session.get(
+            BASE_SEARCH,
+            params={"itemsPerPage": ITEMS_PER_PAGE, "page": page},
+            timeout=30,
+        )
         resp.raise_for_status()
         soup = bs4.BeautifulSoup(resp.text, "lxml")
 
@@ -111,16 +123,17 @@ def visible_text(html: str) -> str:
     soup = bs4.BeautifulSoup(html, "lxml")
 
     # remove obvious non-content tags
-    for tag in soup.find_all(["header", "footer", "nav", "script", "style"]):
+    for tag in soup.find_all(
+        ["header", "footer", "nav", "aside", "script", "style", "noscript"]
+    ):
         tag.decompose()
 
-    container = soup.find("main") or soup.body
+    container = soup.find("main") or soup.find(id="main") or soup.body
     if container is None:
         return ""
 
     raw = container.get_text(separator="\n", strip=True)
 
-    # filter header/footer boilerplate
     exclude_phrases = [
         "Direct naar content",
         "Print Download PDF",
@@ -138,12 +151,30 @@ def visible_text(html: str) -> str:
         "U bent hier:",
     ]
 
-    lines = [l for l in raw.splitlines() if not any(p in l for p in exclude_phrases)]
+    lines = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        if any(p.lower() in line.lower() for p in exclude_phrases):
+            continue
+        lines.append(line)
+
     text = "\n".join(lines)
 
     # remove privacy-sensitive closing paragraph if present
-    text = re.sub(r"Deze beslissing is gegeven door:.*?(?:Voorzitter|Secretaris).*?w\.g\.\s*", "", text, flags=re.DOTALL | re.IGNORECASE)
-    text = re.sub(r"Uitgesproken ter openbare zitting.*?w\.g\.\s*", "", text, flags=re.DOTALL | re.IGNORECASE)
+    text = re.sub(
+        r"Deze beslissing is gegeven door:.*?(?:Voorzitter|Secretaris).*?w\.g\.\s*",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
+    text = re.sub(
+        r"Uitgesproken ter openbare zitting.*?w\.g\.\s*",
+        "",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    )
 
     return " ".join(text.split())
 
@@ -218,8 +249,9 @@ def main() -> None:
         action="store_true",
         help="delete checkpoints and start from scratch",
     )
-    parser.add_argument("--limit", type=int, default=5000,
-                        help="maximum number of new rulings to crawl")
+    parser.add_argument(
+        "--limit", type=int, default=5000, help="maximum number of new rulings to crawl"
+    )
     args = parser.parse_args()
 
     global OUT_FILE
@@ -263,7 +295,9 @@ def main() -> None:
         append_jsonl(new_rows, OUT_FILE)
         append_visited(new_visited)
 
-    print(f"✅ Done crawling {grabbed} items. Total visited: {len(visited) + len(new_visited)}")
+    print(
+        f"✅ Done crawling {grabbed} items. Total visited: {len(visited) + len(new_visited)}"
+    )
 
     # optionally push to HF
     push_to_hf(OUT_FILE)
