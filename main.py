@@ -44,7 +44,7 @@ def strip_xml(xml_bytes: bytes) -> str:
     return " ".join(chunk.strip() for chunk in root.itertext() if chunk.strip())
 
 
-ddef discover_years() -> List[str]:
+def discover_years() -> List[str]:
     paths = []
     page = 0
     while True:
