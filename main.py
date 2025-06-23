@@ -44,21 +44,31 @@ def strip_xml(xml_bytes: bytes) -> str:
     return " ".join(chunk.strip() for chunk in root.itertext() if chunk.strip())
 
 
-def discover_years() -> List[str]:
+ddef discover_years() -> List[str]:
     paths = []
     page = 0
     while True:
         page_path = f"{ROOT_PATH}?start={page * 11}" if page else ROOT_PATH
         soup = fetch_soup(page_path)
-        year_links = soup.select("ul.list-group li a[href^='/frbr/tuchtrecht/']")
+
+        year_links = soup.select("ul.browse__list a[href^='/frbr/tuchtrecht/']")
         if not year_links:
             break
+
+        found = 0
         for a in year_links:
-            href = a["href"]
-            if href.count("/") == 3:
+            href = a.get("href", "")
+            # Match only hrefs like /frbr/tuchtrecht/1994
+            if href.count("/") == 3 and href[len("/frbr/tuchtrecht/"):].isdigit():
                 paths.append(href)
+                found += 1
+
+        if found == 0:
+            break
+
         page += 1
         time.sleep(SLEEP)
+
     logging.info("Discovered %d years", len(paths))
     return paths
 
