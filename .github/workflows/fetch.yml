@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
-      HF_DATASET_REPO: your-username/tuchtrecht-ocr
+      HF_DATASET_REPO: vGassen/Dutch-Open-Data-Tuchrecht-Disciplinary-Court-Cases
       HF_PRIVATE: "false"
     steps:
       - name: Checkout code
