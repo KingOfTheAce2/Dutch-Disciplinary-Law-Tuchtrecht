@@ -18,11 +18,11 @@ python3.11 -m pip install -r requirements.txt
 Run manually (the crawler fetches up to 5000 new rulings per run):
 
 ```bash
-python fetch_tuchtrecht.py
+python main.py
 ```
 
-Use `python fetch_tuchtrecht.py --hard-reset` to delete existing checkpoints
-(`visited.txt` and any JSON shards) and crawl everything again.
+Use `python main.py --resume` to continue from the last visited log instead of
+starting a fresh crawl.
 
 Each run writes a new JSONL file under `shards/` and uploads it to the
 configured Hugging Face dataset. The current shard number is stored in
