@@ -5,7 +5,7 @@ import os
 import time
 import logging
 import re
-from typing import List, Dict, Iterable
+from typing import List, Dict, Iterable, Set
 
 import requests
 from bs4 import BeautifulSoup
@@ -24,6 +24,27 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(me
 session = requests.Session()
 session.headers.update(HEADERS)
 session.mount("https://", HTTPAdapter(max_retries=RETRIES))
+
+# Crawl configuration
+VISITED_FILE = "visited_xmls.txt"
+LIMIT = 500
+
+
+def load_visited() -> Set[str]:
+    """Return a set of already processed XML URLs."""
+    if not os.path.exists(VISITED_FILE):
+        return set()
+    with open(VISITED_FILE, "r", encoding="utf-8") as f:
+        return set(line.strip() for line in f if line.strip())
+
+
+def append_visited(urls: Iterable[str]) -> None:
+    """Append new visited URLs to VISITED_FILE."""
+    if not urls:
+        return
+    with open(VISITED_FILE, "a", encoding="utf-8") as f:
+        for u in urls:
+            f.write(u + "\n")
 
 
 def fetch_soup(path: str) -> BeautifulSoup:
@@ -114,25 +135,34 @@ def get_xml_urls(doc_path: str) -> List[str]:
     return urls
 
 
-def discover_xml_urls() -> List[str]:
-    """Return a flat list of all XML file URLs under the tuchtrecht section."""
+def discover_xml_urls(visited: Set[str]) -> List[str]:
+    """Return a flat list of all XML file URLs under the tuchtrecht section
+    that haven't been crawled yet."""
     xml_urls: List[str] = []
     years = discover_years()
     for idx, year_path in enumerate(years, 1):
         logging.info("Processing year %s (%d/%d)", year_path.rsplit("/", 1)[-1], idx, len(years))
         for doc_path in discover_documents(year_path):
             try:
-                xmls = get_xml_urls(doc_path)
+                xmls = [u for u in get_xml_urls(doc_path) if u not in visited]
                 xml_urls.extend(xmls)
             except Exception as e:
                 logging.error("Failed to list XML for %s: %s", doc_path, e)
-    logging.info("Discovered %d XML files", len(xml_urls))
+    logging.info("Discovered %d new XML files", len(xml_urls))
     return xml_urls
 
 
-def record_stream(xml_urls: Iterable[str]) -> Iterable[Dict[str, str]]:
-    for idx, xml_url in enumerate(xml_urls, 1):
-        logging.info("Fetching XML %d: %s", idx, xml_url)
+def record_stream(xml_urls: Iterable[str], visited: Set[str], limit: int) -> Iterable[Dict[str, str]]:
+    """Yield records for XML URLs, stopping after ``limit`` new ones."""
+    new_visited: List[str] = []
+    count = 0
+    for xml_url in xml_urls:
+        if xml_url in visited:
+            continue
+        if count >= limit:
+            break
+
+        logging.info("Fetching XML %d: %s", count + 1, xml_url)
         try:
             resp = session.get(xml_url, timeout=60)
             resp.raise_for_status()
@@ -142,10 +172,19 @@ def record_stream(xml_urls: Iterable[str]) -> Iterable[Dict[str, str]]:
                 "content": content,
                 "source": "Tuchtrechtspraak",
             }
+            visited.add(xml_url)
+            new_visited.append(xml_url)
+            count += 1
+            if len(new_visited) >= 50:
+                append_visited(new_visited)
+                new_visited.clear()
         except Exception as e:
             logging.error("Failed to fetch %s: %s", xml_url, e)
         finally:
             time.sleep(SLEEP)
+
+    if new_visited:
+        append_visited(new_visited)
 
 
 def push_dataset(records: Iterable[Dict[str, str]]):
@@ -188,10 +227,11 @@ def _upload(data: List[Dict[str, str]], features, repo, token, private):
 def main() -> None:
     try:
         logging.info("STEP 1: Finding all crawlable links for tuchtrecht")
-        xml_urls = discover_xml_urls()
+        visited = load_visited()
+        xml_urls = discover_xml_urls(visited)
 
-        logging.info("STEP 2: Crawling all crawlable links")
-        records = record_stream(xml_urls)
+        logging.info("STEP 2: Crawling up to %d new XMLs", LIMIT)
+        records = record_stream(xml_urls, visited, LIMIT)
 
         logging.info("STEP 3: Scraping XML tags and uploading to Hugging Face")
         push_dataset(records)
