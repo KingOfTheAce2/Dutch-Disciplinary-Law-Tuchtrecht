@@ -4,6 +4,7 @@
 import os
 import time
 import logging
+import re
 from typing import List, Dict, Iterable
 
 import requests
@@ -76,19 +77,18 @@ def discover_years() -> List[str]:
 def discover_documents(year_path: str) -> List[str]:
     doc_paths = []
     page = 0
+    pattern = re.compile(r"^/frbr/tuchtrecht/\d{4}/\d+$")
     while True:
         page_path = f"{year_path}?start={page * 11}" if page else year_path
         soup = fetch_soup(page_path)
-        links = soup.select("a[href^='/frbr/tuchtrecht/']")
-        new_links = [
-            a["href"] for a in links
-            if a["href"].count("/") == 4 and a["href"].endswith("")
-        ]
+        links = [a.get("href", "") for a in soup.select("a[href^='/frbr/tuchtrecht/']")]
+        new_links = [href for href in links if pattern.match(href)]
         if not new_links:
             break
         doc_paths.extend(new_links)
         page += 1
         time.sleep(SLEEP)
+    logging.info("  Found %d documents for %s", len(doc_paths), year_path)
     return doc_paths
 
 
@@ -102,15 +102,22 @@ def get_xml_urls(doc_path: str) -> List[str]:
 def discover_xml_urls() -> List[str]:
     """Return a flat list of all XML file URLs under the tuchtrecht section."""
     xml_urls: List[str] = []
-    for year_path in discover_years():
+    years = discover_years()
+    for idx, year_path in enumerate(years, 1):
+        logging.info("Processing year %s (%d/%d)", year_path.rsplit("/", 1)[-1], idx, len(years))
         for doc_path in discover_documents(year_path):
-            xml_urls.extend(get_xml_urls(doc_path))
+            try:
+                xmls = get_xml_urls(doc_path)
+                xml_urls.extend(xmls)
+            except Exception as e:
+                logging.error("Failed to list XML for %s: %s", doc_path, e)
     logging.info("Discovered %d XML files", len(xml_urls))
     return xml_urls
 
 
 def record_stream(xml_urls: Iterable[str]) -> Iterable[Dict[str, str]]:
-    for xml_url in xml_urls:
+    for idx, xml_url in enumerate(xml_urls, 1):
+        logging.info("Fetching XML %d: %s", idx, xml_url)
         try:
             resp = session.get(xml_url, timeout=60)
             resp.raise_for_status()
