@@ -135,19 +135,27 @@ def get_xml_urls(doc_path: str) -> List[str]:
     return urls
 
 
-def discover_xml_urls(visited: Set[str]) -> List[str]:
-    """Return a flat list of all XML file URLs under the tuchtrecht section
-    that haven't been crawled yet."""
+def discover_xml_urls(visited: Set[str], limit: int) -> List[str]:
+    """Return up to ``limit`` new XML URLs that haven't been crawled yet."""
     xml_urls: List[str] = []
     years = discover_years()
     for idx, year_path in enumerate(years, 1):
+        if len(xml_urls) >= limit:
+            break
         logging.info("Processing year %s (%d/%d)", year_path.rsplit("/", 1)[-1], idx, len(years))
         for doc_path in discover_documents(year_path):
+            if len(xml_urls) >= limit:
+                break
             try:
-                xmls = [u for u in get_xml_urls(doc_path) if u not in visited]
-                xml_urls.extend(xmls)
+                for url in get_xml_urls(doc_path):
+                    if url in visited:
+                        continue
+                    xml_urls.append(url)
+                    if len(xml_urls) >= limit:
+                        break
             except Exception as e:
                 logging.error("Failed to list XML for %s: %s", doc_path, e)
+        time.sleep(SLEEP)
     logging.info("Discovered %d new XML files", len(xml_urls))
     return xml_urls
 
@@ -228,7 +236,7 @@ def main() -> None:
     try:
         logging.info("STEP 1: Finding all crawlable links for tuchtrecht")
         visited = load_visited()
-        xml_urls = discover_xml_urls(visited)
+        xml_urls = discover_xml_urls(visited, LIMIT)
 
         logging.info("STEP 2: Crawling up to %d new XMLs", LIMIT)
         records = record_stream(xml_urls, visited, LIMIT)
