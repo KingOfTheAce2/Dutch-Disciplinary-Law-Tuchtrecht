@@ -75,9 +75,14 @@ def discover_years() -> List[str]:
 
 
 def discover_documents(year_path: str) -> List[str]:
-    doc_paths = []
+    """Return all work-level paths for a specific year."""
+    doc_paths: List[str] = []
     page = 0
-    pattern = re.compile(r"^/frbr/tuchtrecht/\d{4}/\d+$")
+    # Works are listed as ``/frbr/tuchtrecht/<year>/<ECLI>``. The ECLI may
+    # contain colons and other characters, so match everything up to the next
+    # slash.
+    pattern = re.compile(rf"^/frbr/tuchtrecht/\d{{4}}/[^/]+$")
+
     while True:
         page_path = f"{year_path}?start={page * 11}" if page else year_path
         soup = fetch_soup(page_path)
@@ -88,15 +93,25 @@ def discover_documents(year_path: str) -> List[str]:
         doc_paths.extend(new_links)
         page += 1
         time.sleep(SLEEP)
+
     logging.info("  Found %d documents for %s", len(doc_paths), year_path)
     return doc_paths
 
 
 def get_xml_urls(doc_path: str) -> List[str]:
-    expr_path = f"{doc_path}/1"
-    soup = fetch_soup(expr_path)
-    xml_links = soup.select("a[href$='.xml'][href*='/xml/']")
-    return [f"{BASE_URL}{a['href']}" for a in xml_links]
+    """Return the direct XML file URLs for a work."""
+    expr_xml_path = f"{doc_path}/1/xml/"
+    soup = fetch_soup(expr_xml_path)
+    xml_links = soup.select("a[href$='.xml']")
+    urls: List[str] = []
+    for a in xml_links:
+        href = a.get("href", "")
+        if href:
+            if href.startswith("http"):
+                urls.append(href)
+            else:
+                urls.append(f"{BASE_URL}{href}")
+    return urls
 
 
 def discover_xml_urls() -> List[str]:
