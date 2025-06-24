@@ -4,7 +4,7 @@
 import os
 import time
 import logging
-from typing import List, Dict
+from typing import List, Dict, Iterable
 
 import requests
 from bs4 import BeautifulSoup
@@ -99,26 +99,34 @@ def get_xml_urls(doc_path: str) -> List[str]:
     return [f"{BASE_URL}{a['href']}" for a in xml_links]
 
 
-def record_stream() -> Dict[str, str]:
+def discover_xml_urls() -> List[str]:
+    """Return a flat list of all XML file URLs under the tuchtrecht section."""
+    xml_urls: List[str] = []
     for year_path in discover_years():
         for doc_path in discover_documents(year_path):
-            for xml_url in get_xml_urls(doc_path):
-                try:
-                    resp = session.get(xml_url, timeout=60)
-                    resp.raise_for_status()
-                    content = strip_xml(resp.content)
-                    yield {
-                        "url": xml_url,
-                        "content": content,
-                        "source": "Tuchtrechtspraak",
-                    }
-                except Exception as e:
-                    logging.error("Failed to fetch %s: %s", xml_url, e)
-                finally:
-                    time.sleep(SLEEP)
+            xml_urls.extend(get_xml_urls(doc_path))
+    logging.info("Discovered %d XML files", len(xml_urls))
+    return xml_urls
 
 
-def push_dataset():
+def record_stream(xml_urls: Iterable[str]) -> Iterable[Dict[str, str]]:
+    for xml_url in xml_urls:
+        try:
+            resp = session.get(xml_url, timeout=60)
+            resp.raise_for_status()
+            content = strip_xml(resp.content)
+            yield {
+                "url": xml_url,
+                "content": content,
+                "source": "Tuchtrechtspraak",
+            }
+        except Exception as e:
+            logging.error("Failed to fetch %s: %s", xml_url, e)
+        finally:
+            time.sleep(SLEEP)
+
+
+def push_dataset(records: Iterable[Dict[str, str]]):
     repo = os.environ["HF_DATASET_REPO"]
     token = os.environ["HF_TOKEN"]
     private = os.getenv("HF_PRIVATE", "false").lower() == "true"
@@ -131,7 +139,7 @@ def push_dataset():
 
     chunk, chunk_size = [], 1000
     total = 0
-    for rec in tqdm(record_stream(), desc="Scraping XML"):
+    for rec in tqdm(records, desc="Scraping XML"):
         chunk.append(rec)
         if len(chunk) >= chunk_size:
             _upload(chunk, features, repo, token, private)
@@ -155,9 +163,20 @@ def _upload(data: List[Dict[str, str]], features, repo, token, private):
     logging.info("Uploaded %d rows to %s", len(data), repo)
 
 
-if __name__ == "__main__":
+def main() -> None:
     try:
-        push_dataset()
+        logging.info("STEP 1: Finding all crawlable links for tuchtrecht")
+        xml_urls = discover_xml_urls()
+
+        logging.info("STEP 2: Crawling all crawlable links")
+        records = record_stream(xml_urls)
+
+        logging.info("STEP 3: Scraping XML tags and uploading to Hugging Face")
+        push_dataset(records)
     except KeyError as e:
         logging.critical("Missing env var: %s", e)
         exit(1)
+
+
+if __name__ == "__main__":
+    main()
