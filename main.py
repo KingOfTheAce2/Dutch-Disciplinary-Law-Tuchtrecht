@@ -221,13 +221,18 @@ def push_dataset(records: Iterable[Dict[str, str]]):
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
     api = HfApi(token=token)
+    api.create_repo(
+        repo_id=repo,
+        repo_type="dataset",
+        private=private,
+        exist_ok=True,
+    )
     api.upload_file(
         path_or_fileobj=str(shard_path),
         path_in_repo=shard_path.as_posix(),
         repo_id=repo,
         repo_type="dataset",
         commit_message=f"Add shard {shard_idx}",
-        private=private,
     )
 
     with open("last_shard.txt", "w", encoding="utf-8") as f:
