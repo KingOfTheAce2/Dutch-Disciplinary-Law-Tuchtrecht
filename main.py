@@ -3,22 +3,24 @@
 
 import os
 import time
+import json
 import logging
 import re
+from pathlib import Path
 from typing import List, Dict, Iterable, Set
 
 import requests
 from bs4 import BeautifulSoup
 from lxml import etree
-from datasets import Dataset, Features, Value
 from tqdm import tqdm
 from requests.adapters import HTTPAdapter, Retry
+from huggingface_hub import HfApi
 
 BASE_URL = "https://repository.overheid.nl"
 ROOT_PATH = "/frbr/tuchtrecht"
 HEADERS = {"User-Agent": "Tuchtrecht-Scraper"}
-SLEEP = 0.3
-RETRIES = Retry(total=5, backoff_factor=1.5, status_forcelist=[500, 502, 503, 504])
+SLEEP = 0.5
+RETRIES = Retry(total=5, backoff_factor=1.5, status_forcelist=[429, 500, 502, 503, 504])
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 session = requests.Session()
@@ -196,40 +198,42 @@ def record_stream(xml_urls: Iterable[str], visited: Set[str], limit: int) -> Ite
 
 
 def push_dataset(records: Iterable[Dict[str, str]]):
+    """Save ``records`` to a new JSONL shard and upload it."""
     repo = os.environ["HF_DATASET_REPO"]
     token = os.environ["HF_TOKEN"]
     private = os.getenv("HF_PRIVATE", "false").lower() == "true"
 
-    features = Features({
-        "url": Value("string"),
-        "content": Value("string"),
-        "source": Value("string"),
-    })
+    data = list(records)
+    if not data:
+        logging.info("No new records to upload")
+        return
 
-    chunk, chunk_size = [], 1000
-    total = 0
-    for rec in tqdm(records, desc="Scraping XML"):
-        chunk.append(rec)
-        if len(chunk) >= chunk_size:
-            _upload(chunk, features, repo, token, private)
-            total += len(chunk)
-            chunk.clear()
-    if chunk:
-        _upload(chunk, features, repo, token, private)
-        total += len(chunk)
-    logging.info("Finished uploading %d records.", total)
+    shard_dir = Path("shards")
+    shard_dir.mkdir(exist_ok=True)
+    shard_idx = 0
+    if os.path.exists("last_shard.txt"):
+        with open("last_shard.txt", "r", encoding="utf-8") as f:
+            shard_idx = int(f.read().strip() or 0)
 
+    shard_path = shard_dir / f"shard-{shard_idx:05d}.jsonl"
+    with shard_path.open("w", encoding="utf-8") as f:
+        for rec in data:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
-def _upload(data: List[Dict[str, str]], features, repo, token, private):
-    ds = Dataset.from_list(data, features=features)
-    ds.push_to_hub(
+    api = HfApi(token=token)
+    api.upload_file(
+        path_or_fileobj=str(shard_path),
+        path_in_repo=shard_path.as_posix(),
         repo_id=repo,
-        token=token,
-        split="train",
+        repo_type="dataset",
+        commit_message=f"Add shard {shard_idx}",
         private=private,
-        max_shard_size="500MB",
     )
-    logging.info("Uploaded %d rows to %s", len(data), repo)
+
+    with open("last_shard.txt", "w", encoding="utf-8") as f:
+        f.write(str(shard_idx + 1))
+
+    logging.info("Uploaded %s with %d records", shard_path.name, len(data))
 
 
 def main() -> None:
