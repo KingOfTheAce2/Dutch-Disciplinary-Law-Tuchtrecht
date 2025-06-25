@@ -16,7 +16,7 @@ from requests.adapters import HTTPAdapter, Retry
 
 BASE_URL = "https://repository.overheid.nl"
 ROOT_PATH = "/frbr/tuchtrecht"
-HEADERS = {"User-Agent": "ESJ-Tuchtrecht-Scraper/1.0"}
+HEADERS = {"User-Agent": "Tuchtrecht-Scraper"}
 SLEEP = 0.3
 RETRIES = Retry(total=5, backoff_factor=1.5, status_forcelist=[500, 502, 503, 504])
 
