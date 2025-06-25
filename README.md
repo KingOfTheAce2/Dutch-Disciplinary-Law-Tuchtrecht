@@ -35,8 +35,10 @@ Or add to cron to automate daily.
 Set the following environment variables before running the fetch script:
 
 * `HF_TOKEN` – an access token with write permissions
+* `HF_DATASET_REPO` – Hugging Face dataset repository name
+* `HF_PRIVATE` – set to `true` to create a private dataset (optional)
 
-The dataset will be created under
+The dataset will be created under `HF_DATASET_REPO`, for example
 `vGassen/Dutch-Open-Data-Tuchrecht-Disciplinary-Court-Cases`.
 
 ## GitHub Actions
