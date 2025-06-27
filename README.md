@@ -30,10 +30,10 @@ python3.11 -m pip install -r requirements.txt
 Run manually (the crawler fetches up to 5000 new rulings per run):
 
 ```bash
-python main.py
+python -m crawler.main
 ```
 
-Use `python main.py --resume` to continue from the last visited log instead of
+Use `python -m crawler.main --resume` to continue from the last visited log instead of
 starting a fresh crawl.
 
 Each run writes a new JSONL file under `shards/` and uploads it to the
