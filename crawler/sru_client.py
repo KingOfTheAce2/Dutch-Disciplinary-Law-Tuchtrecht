@@ -1,8 +1,13 @@
 # crawler/sru_client.py
 # This module handles all SRU 2.0 protocol communication.
 
-import requests
 from typing import Iterator, Dict, Any
+
+import requests
+
+from .utils import get_session
+
+_SESSION = get_session()
 
 BASE_URL = "https://repository.overheid.nl/sru"
 PAGE_SIZE = 100 # As per SRU documentation, max is 1000, but we'll use a smaller size
@@ -35,7 +40,7 @@ def get_records(query: str, start_date: str = None) -> Iterator[Dict[str, Any]]:
         }
         
         try:
-            response = requests.get(BASE_URL, params=params)
+            response = _SESSION.get(BASE_URL, params=params)
             response.raise_for_status()
             
             import xmltodict

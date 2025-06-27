@@ -2,21 +2,25 @@
 # This module is responsible for parsing the XML responses from the SRU endpoint.
 
 from typing import Dict, Any, Optional
+
 import requests
+
+from .utils import get_session
+
+_SESSION = get_session()
 
 def get_full_text(url: str) -> Optional[str]:
     """
-    Fetches the full text content from a given URL.
-    It expects the content to be XML and will extract text from it.
-    
+    Fetches the full text content from a given URL using a session with retry.
+
     Args:
         url: The URL of the XML file.
-        
+
     Returns:
         The extracted full text as a string, or None if fetching fails.
     """
     try:
-        response = requests.get(url)
+        response = _SESSION.get(url)
         response.raise_for_status()
         # We assume the content is XML and needs parsing to extract text.
         # This is a simple text extraction. More complex XML structures might need a more robust parser.
