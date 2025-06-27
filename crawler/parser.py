@@ -4,6 +4,7 @@
 from typing import Dict, Any, Optional
 
 import requests
+import xml.etree.ElementTree as ET
 
 from .utils import get_session
 
@@ -24,7 +25,6 @@ def get_full_text(url: str) -> Optional[str]:
         response.raise_for_status()
         # We assume the content is XML and needs parsing to extract text.
         # This is a simple text extraction. More complex XML structures might need a more robust parser.
-        import xml.etree.ElementTree as ET
         root = ET.fromstring(response.content)
         # Concatenate all text from all elements
         return "".join(root.itertext())

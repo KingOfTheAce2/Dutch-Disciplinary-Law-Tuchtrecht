@@ -21,6 +21,7 @@ DATA_DIR = "data"
 LAST_UPDATE_FILE = ".last_update"
 BASE_QUERY = "c.product-area==tuchtrecht"
 RECORDS_PER_SHARD = 1000
+DEFAULT_MAX_RECORDS = 10000
 
 
 def get_last_run_date():
@@ -45,6 +46,12 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Ignore the last update timestamp and crawl the full backlog",
     )
+    parser.add_argument(
+        "--max-records",
+        type=int,
+        default=DEFAULT_MAX_RECORDS,
+        help="Maximum number of records to process in a single run",
+    )
     return parser.parse_args()
 
 
@@ -64,6 +71,7 @@ def main() -> None:
         print(f"Performing weekly update since last run on: {last_run_date}")
     else:
         print("Performing full backlog crawl.")
+    print(f"Maximum records this run: {args.max_records}")
 
     records_iterator = get_records(BASE_QUERY, start_date=last_run_date)
 
@@ -99,6 +107,11 @@ def main() -> None:
             writer.write(parsed)
             processed_count += 1
             records_in_current_shard += 1
+            print(f"Saved record {processed_count}: {parsed['URL']}")
+
+            if processed_count >= args.max_records:
+                print(f"Reached max-records limit ({args.max_records}). Stopping early.")
+                break
 
             if records_in_current_shard >= RECORDS_PER_SHARD:
                 writer.close()
