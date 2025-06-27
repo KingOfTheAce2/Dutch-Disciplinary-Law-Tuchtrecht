@@ -2,8 +2,16 @@
 # Main entry point for the Tuchtrecht crawler.
 
 import os
+import sys
+from pathlib import Path
 from datetime import datetime, timezone
 import jsonlines
+
+# Ensure the package is importable when executed directly as a script.
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from crawler.sru_client import get_records
 from crawler.parser import parse_record
 from crawler.scrubber import scrub_text
