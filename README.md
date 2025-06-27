@@ -33,8 +33,8 @@ Run manually (the crawler fetches up to 5000 new rulings per run):
 python -m crawler.main
 ```
 
-Use `python -m crawler.main --resume` to continue from the last visited log instead of
-starting a fresh crawl.
+Use `python -m crawler.main --reset` to ignore the last run timestamp and crawl the
+entire backlog.
 
 Each run writes a new JSONL file under `shards/` and uploads it to the
 configured Hugging Face dataset. The current shard number is stored in

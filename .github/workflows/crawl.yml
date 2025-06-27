@@ -31,7 +31,12 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run crawler
-        run: python crawler/main.py
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            python crawler/main.py --reset
+          else
+            python crawler/main.py
+          fi
 
       - name: Commit and push if it changed
         run: |
