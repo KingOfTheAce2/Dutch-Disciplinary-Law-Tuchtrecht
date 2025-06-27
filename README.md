@@ -27,18 +27,22 @@ python3.11 -m pip install -r requirements.txt
 
 ## Daily Fetch Script
 
-Run manually (the crawler fetches up to 5000 new rulings per run):
+Run manually (the crawler processes up to 10,000 records per run by default):
 
 ```bash
 python -m crawler.main
 ```
 
-Use `python -m crawler.main --reset` to ignore the last run timestamp and crawl the
-entire backlog.
+During execution the crawler prints each processed URL so progress is visible in
+the GitHub Actions log.
 
-Each run writes a new JSONL file under `shards/` and uploads it to the
-configured Hugging Face dataset. The current shard number is stored in
-`last_shard.txt` so consecutive runs don't overwrite previous data.
+Use `python -m crawler.main --reset` to ignore the last run timestamp and crawl the
+entire backlog. The `--max-records` option controls how many rulings are
+processed in a single run.
+
+Each run appends new JSONL files under `data/`. The timestamp of the last
+successful crawl is stored in `.last_update` so consecutive runs only fetch new
+data.
 
 Or add to cron to automate daily.
 
