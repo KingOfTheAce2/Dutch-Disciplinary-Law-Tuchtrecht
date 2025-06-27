@@ -1,31 +1,57 @@
-# crawler/scrubber.py
-# This module anonymizes names found in the case text.
-
 import re
 
+# Patterns for common titles followed by personal names (e.g. "mr. Jansen")
+_TITLE_NAME_PATTERN = re.compile(
+    r"(?i)\b(mr\.?|prof\.?|dr\.?|ir\.?)\s+((?:[A-Z]\.)+\s*)?"
+    r"[A-ZÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ.'`-]+(?:\s+[A-ZÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ.'`-]+){0,2}"
+)
+
+# "klager" and "verweerder" parties followed by a name
+_PARTY_PATTERN = re.compile(
+    r"(?i)\b(klager|verweerder)\s+((?:[A-Z]\.)?\s*[A-ZÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ.'`-]+)"
+)
+
+# Courtesy titles such as "de heer" or "mevrouw" followed by a name
+_COURTESY_PATTERN = re.compile(
+    r"(?i)\b(de\s+heer|mevrouw|mevr\.?)\s+((?:[A-Z]\.)+\s*)?"
+    r"[A-ZÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ.'`-]+(?:\s+[A-ZÀ-ÖØ-öø-ÿ][A-Za-zÀ-ÖØ-öø-ÿ.'`-]+){0,2}"
+)
+
+# Simple gemachtigde pattern: match a few tokens following the keyword
+_GEMACHTIGDE_PATTERN = re.compile(
+    r"(?i)(gemachtigde[^\n]{0,10}(?:mr\.\s*)?)((?:[A-Za-zÀ-ÖØ-öø-ÿ.'`-]+\s*){1,5})"
+)
+
+def scrub_title_names(text: str) -> str:
+    """Replace titles followed by names with a placeholder."""
+    if not text:
+        return text
+    return _TITLE_NAME_PATTERN.sub(lambda m: f"{m.group(1)} NAAM", text)
+
+def scrub_party_names(text: str) -> str:
+    """Replace 'klager' or 'verweerder' names with a placeholder."""
+    if not text:
+        return text
+    return _PARTY_PATTERN.sub(lambda m: f"{m.group(1)} NAAM", text)
+
+def scrub_courtesy_names(text: str) -> str:
+    """Replace courtesy titles followed by names with a placeholder."""
+    if not text:
+        return text
+    return _COURTESY_PATTERN.sub(lambda m: f"{m.group(1)} NAAM", text)
+
+def scrub_gemachtigde_names(text: str) -> str:
+    """Replace names following 'gemachtigde' with 'NAAM'."""
+    if not text:
+        return text
+    return _GEMACHTIGDE_PATTERN.sub(lambda m: f"{m.group(1)}NAAM", text)
+
 def scrub_text(text: str) -> str:
-    """
-    Applies light anonymization to the text.
-
-    Args:
-        text: The original case text.
-
-    Returns:
-        The anonymized text.
-    """
-    # Redact patterns like "mr. Jansen", "klager X", "verweerder Y"
-    # Using function to replace to avoid re-compiling regex every time.
-    # This is a simple implementation and might need refinement for edge cases.
-    
-    # "mr. [Titlecase Name]"
-    text = re.sub(r'mr\.\s+([A-Z][a-z]+)', 'mr. [NAAM]', text)
-    # "klager/verweerder [Single Letter or Name]"
-    text = re.sub(r'(klager|verweerder)\s+([A-Z][a-zA-Z]*)', r'\1 [NAAM]', text)
-    
-    # A more general approach for names (can have false positives)
-    # Looks for a capital letter word not at the start of a sentence.
-    # This is tricky and can redact legitimate legal terms.
-    # A more robust solution would involve a dictionary of legal terms to exclude.
-    # For now, this is a placeholder for a more advanced implementation.
-    
+    """Apply all available name scrubbing rules."""
+    if not text:
+        return text
+    text = scrub_title_names(text)
+    text = scrub_party_names(text)
+    text = scrub_courtesy_names(text)
+    text = scrub_gemachtigde_names(text)
     return text

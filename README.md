@@ -2,6 +2,18 @@
 
 This project fetches daily data from the Tuchtrecht SRU endpoint provided by the Dutch government and:
 
+The Tuchtrecht (disciplinary law) corpus spans multiple professional fields:
+
+- **Accountants** – uitspraken van de Accountantskamer
+- **Advocaten** – uitspraken van de Raden van Discipline en het Hof van Discipline
+- **Diergeneeskundigen** – uitspraken van het Veterinair Tuchtcollege en het Veterinair Beroepscollege
+- **Gerechtsdeurwaarders** – uitspraken van de Kamer voor Gerechtsdeurwaarders
+- **Gezondheidszorg** – uitspraken van de Regionale Tuchtcolleges en het Centraal Tuchtcollege voor de Gezondheidszorg
+- **Notarissen** – uitspraken van de Kamers voor het notariaat
+- **Scheepvaart** – uitspraken van het Tuchtcollege voor de Scheepvaart
+
+The crawler performs the following steps:
+
 1. Saves the XML to this repository.
 2. Pushes the file to Hugging Face datasets.
 
