@@ -6,3 +6,4 @@ lxml
 xmltodict
 jsonlines
 python-dateutil
+huggingface_hub

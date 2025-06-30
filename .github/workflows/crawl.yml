@@ -46,3 +46,17 @@ jobs:
           # Commit only if there are changes
           git diff --staged --quiet || git commit -m "Weekly Tuchtrecht data update"
           git push
+
+      - name: Upload data to Hugging Face
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_DATASET_REPO: ${{ secrets.HF_DATASET_REPO }}
+        run: |
+          pip install huggingface_hub git-lfs
+          git lfs install
+          git clone https://huggingface.co/datasets/${HF_DATASET_REPO} hf-dataset
+          cp data/*.jsonl hf-dataset/ || true
+          cd hf-dataset
+          git add .
+          git commit -m "Update dataset from crawler run" || echo "No changes"
+          git push https://user:${HF_TOKEN}@huggingface.co/datasets/${HF_DATASET_REPO} HEAD

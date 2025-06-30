@@ -15,7 +15,7 @@ The Tuchtrecht (disciplinary law) corpus spans multiple professional fields:
 The crawler performs the following steps:
 
 1. Saves the XML to this repository.
-2. Pushes the file to Hugging Face datasets.
+2. The GitHub Actions workflow copies the generated JSONL shards to a Hugging Face dataset.
 
 ## Setup
 
@@ -60,5 +60,6 @@ The dataset will be created under `HF_DATASET_REPO`, for example
 ## GitHub Actions
 
 A workflow is included to automate fetching. It runs every Sunday and can also
-be triggered manually from the Actions tab. Configure the `HF_TOKEN` secret in
-your repository settings so the script can push the latest data to Hugging Face.
+be triggered manually from the Actions tab. Configure the `HF_TOKEN` and
+`HF_DATASET_REPO` secrets in your repository settings so the workflow can push
+the latest JSONL shards to your Hugging Face dataset.
