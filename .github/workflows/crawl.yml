@@ -55,6 +55,11 @@ jobs:
           pip install huggingface_hub git-lfs
           git lfs install
           git clone https://huggingface.co/datasets/${HF_DATASET_REPO} hf-dataset
+          cd hf-dataset
+          git lfs track "*.jsonl"
+          git add .gitattributes
+          git commit -m "Track JSONL shards via Git LFS" || true
+          cd ..
           cp data/*.jsonl hf-dataset/ || true
           cd hf-dataset
           git add .
