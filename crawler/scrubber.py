@@ -19,7 +19,7 @@ _COURTESY_PATTERN = re.compile(
 
 # Simple gemachtigde pattern: match a few tokens following the keyword
 _GEMACHTIGDE_PATTERN = re.compile(
-    r"(?i)(gemachtigde[^\n]{0,10}(?:mr\.\s*)?)((?:[A-Za-zÀ-ÖØ-öø-ÿ.'`-]+\s*){1,5})"
+    r"(?i)(gemachtigde[^\n]{0,10}?(?:mr\.?\s*)?)((?:[A-Za-zÀ-ÖØ-öø-ÿ.'`-]+\s*){1,5})"
 )
 
 def scrub_title_names(text: str) -> str:
