@@ -38,8 +38,10 @@ the GitHub Actions log.
 
 Use `python -m crawler.main --reset` to ignore the last run timestamp and crawl the
 entire backlog. The `--max-records` option controls how many rulings are
-processed in a single run. The `--clear-data` flag removes any existing shards
-and the `.last_update` file so the crawler starts completely fresh.
+processed in a single run.
+
+If the `data/` directory is missing, the crawler automatically deletes
+`.last_update` so that a fresh crawl is performed.
 
 Each run appends new JSONL files under `data/`. The timestamp of the last
 successful crawl is stored in `.last_update` so consecutive runs only fetch new
