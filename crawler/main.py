@@ -12,7 +12,7 @@ import shutil
 # Ensure the package is importable when executed directly as a script.
 ROOT_DIR = Path(__file__).resolve().parent.parent
 if str(ROOT_DIR) not in sys.path:
-    sys.path.insert(0, str(ROOT_DIR))
+    sys.sys.path.insert(0, str(ROOT_DIR))
 
 from crawler.sru_client import get_records
 from crawler.parser import parse_record
@@ -56,23 +56,12 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_MAX_RECORDS,
         help="Maximum number of records to process in a single run",
     )
-    parser.add_argument(
-        "--clear-data",
-        action="store_true",
-        help="Delete existing data shards and the last update timestamp",
-    )
     return parser.parse_args()
 
 
 def main() -> None:
     """Main function to run the crawler."""
     args = parse_args()
-
-    if args.clear_data:
-        if os.path.exists(DATA_DIR):
-            shutil.rmtree(DATA_DIR)
-        if os.path.exists(LAST_UPDATE_FILE):
-            os.remove(LAST_UPDATE_FILE)
 
     if args.reset and os.path.exists(LAST_UPDATE_FILE):
         os.remove(LAST_UPDATE_FILE)
@@ -95,18 +84,30 @@ def main() -> None:
 
     # Find the latest shard index to append to it.
     existing_shards = [
-        f for f in os.listdir(DATA_DIR) if f.startswith("tuchtrecht_shard_")
+        f for f in os.listdir(DATA_DIR) if f.startswith("tuchtrecht_shard_") and f.endswith(".jsonl")
     ]
     if existing_shards:
-        shard_index = max(
-            [int(f.split("_")[-1].split(".")[0]) for f in existing_shards]
-        )
-        # Check if the latest shard is full
-        with jsonlines.open(
-            os.path.join(DATA_DIR, f"tuchtrecht_shard_{shard_index:03d}.jsonl")
-        ) as reader:
-            records_in_current_shard = sum(1 for _ in reader)
-        if records_in_current_shard >= RECORDS_PER_SHARD:
+        # Sort to ensure we get the highest index
+        existing_shards.sort()
+        latest_shard_file = existing_shards[-1]
+        try:
+            shard_index = int(latest_shard_file.split("_")[-1].split(".")[0])
+            # Check if the latest shard is full by attempting to read it
+            with jsonlines.open(
+                os.path.join(DATA_DIR, latest_shard_file), mode="r"
+            ) as reader:
+                # Iterate and count records, handling potential InvalidLineError
+                for _ in reader:
+                    records_in_current_shard += 1
+            if records_in_current_shard >= RECORDS_PER_SHARD:
+                shard_index += 1
+                records_in_current_shard = 0
+        except (jsonlines.InvalidLineError, ValueError) as e:
+            print(f"Warning: Could not read or parse existing shard {latest_shard_file}. Starting new shard. Error: {e}")
+            shard_index += 1 # Start a new shard if existing one is corrupt
+            records_in_current_shard = 0
+        except FileNotFoundError:
+            print(f"Warning: Existing shard file {latest_shard_file} not found. Starting new shard.")
             shard_index += 1
             records_in_current_shard = 0
 
