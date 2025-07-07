@@ -55,7 +55,7 @@ Set the following environment variables before running the fetch script:
 * `HF_PRIVATE` – set to `true` to create a private dataset (optional)
 
 The dataset will be created under `HF_DATASET_REPO`, for example
-`vGassen/Dutch-Open-Data-Tuchrecht-Disciplinary-Court-Cases`.
+`vGassen/Dutch-Open-Data-Tuchtrecht-Disciplinary-Court-Cases`.
 
 ## GitHub Actions
 
