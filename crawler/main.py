@@ -7,7 +7,6 @@ from pathlib import Path
 from datetime import datetime, timezone
 import jsonlines
 import argparse
-import shutil
 
 # Ensure the package is importable when executed directly as a script.
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -68,6 +67,9 @@ def main() -> None:
 
     if not os.path.exists(DATA_DIR):
         os.makedirs(DATA_DIR)
+        if os.path.exists(LAST_UPDATE_FILE) and not args.reset:
+            print("Data directory missing. Removing stale last update timestamp.")
+            os.remove(LAST_UPDATE_FILE)
 
     last_run_date = None if args.reset else get_last_run_date()
 

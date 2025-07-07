@@ -6,7 +6,7 @@ from typing import Dict, Any, Optional
 import requests
 import xml.etree.ElementTree as ET
 
-from .utils import get_session
+from .sru_client import get_session
 
 _SESSION = get_session()
 
