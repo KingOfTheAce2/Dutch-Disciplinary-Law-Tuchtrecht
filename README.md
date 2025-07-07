@@ -38,11 +38,13 @@ the GitHub Actions log.
 
 Use `python -m crawler.main --reset` to ignore the last run timestamp and crawl the
 entire backlog. The `--max-records` option controls how many rulings are
-processed in a single run.
+processed in a single run. The `--clear-data` flag removes any existing shards
+and the `.last_update` file so the crawler starts completely fresh.
 
 Each run appends new JSONL files under `data/`. The timestamp of the last
 successful crawl is stored in `.last_update` so consecutive runs only fetch new
-data.
+data. Each shard contains at most 350 entries so the resulting files stay under
+the 10&nbsp;MiB upload limit on Hugging Face.
 
 Or add to cron to automate daily.
 

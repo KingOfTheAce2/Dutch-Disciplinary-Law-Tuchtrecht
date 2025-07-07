@@ -7,6 +7,7 @@ from pathlib import Path
 from datetime import datetime, timezone
 import jsonlines
 import argparse
+import shutil
 
 # Ensure the package is importable when executed directly as a script.
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -20,7 +21,10 @@ from crawler.scrubber import scrub_text
 DATA_DIR = "data"
 LAST_UPDATE_FILE = ".last_update"
 BASE_QUERY = "c.product-area==tuchtrecht"
-RECORDS_PER_SHARD = 1000
+# Maximum number of entries per JSONL shard. The Hugging Face upload
+# workflow rejects files larger than ~10MiB, which roughly equals 350
+# records. Keeping the shards small ensures uploads succeed.
+RECORDS_PER_SHARD = 350
 DEFAULT_MAX_RECORDS = 10000
 
 
@@ -52,12 +56,23 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_MAX_RECORDS,
         help="Maximum number of records to process in a single run",
     )
+    parser.add_argument(
+        "--clear-data",
+        action="store_true",
+        help="Delete existing data shards and the last update timestamp",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     """Main function to run the crawler."""
     args = parse_args()
+
+    if args.clear_data:
+        if os.path.exists(DATA_DIR):
+            shutil.rmtree(DATA_DIR)
+        if os.path.exists(LAST_UPDATE_FILE):
+            os.remove(LAST_UPDATE_FILE)
 
     if args.reset and os.path.exists(LAST_UPDATE_FILE):
         os.remove(LAST_UPDATE_FILE)
