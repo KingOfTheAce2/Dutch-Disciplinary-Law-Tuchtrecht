@@ -52,18 +52,18 @@ Or add to cron to automate daily.
 
 ## Hugging Face
 
-Set the following environment variables before running the fetch script:
+Set the following environment variable before running the fetch script:
 
 * `HF_TOKEN` – an access token with write permissions
-* `HF_DATASET_REPO` – Hugging Face dataset repository name
 * `HF_PRIVATE` – set to `true` to create a private dataset (optional)
 
-The dataset will be created under `HF_DATASET_REPO`, for example
-`vGassen/Dutch-Open-Data-Tuchtrecht-Disciplinary-Court-Cases`.
+The dataset is uploaded to
+`vGassen/Dutch-Open-Data-Tuchtrecht-Disciplinary-Court-Cases` as configured in
+the GitHub Actions workflow.
 
 ## GitHub Actions
 
 A workflow is included to automate fetching. It runs every Sunday and can also
-be triggered manually from the Actions tab. Configure the `HF_TOKEN` and
-`HF_DATASET_REPO` secrets in your repository settings so the workflow can push
-the latest JSONL shards to your Hugging Face dataset.
+be triggered manually from the Actions tab. Configure the `HF_TOKEN` secret in
+your repository settings so the workflow can push the latest JSONL shards to the
+configured Hugging Face dataset.
