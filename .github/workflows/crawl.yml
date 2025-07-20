@@ -6,9 +6,6 @@ name: Tuchtrecht Crawler
 on:
   # Allows manual triggering of the workflow from the Actions tab in GitHub.
   workflow_dispatch:
-  # Schedules the workflow to run at 02:00 on every Sunday.
-  schedule:
-    - cron: '0 2 * * 0'
 
 permissions:
   contents: write
